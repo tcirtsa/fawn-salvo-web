@@ -1,103 +1,123 @@
-import Image from "next/image";
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import { Post } from '@/types/post';
+import { postService } from '@/services/post';
+import CreatePost from '@/components/CreatePost';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+  const fetchPosts = useCallback(async (pageNum = 1) => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const data = await postService.getPosts(pageNum);
+      setPosts(prevPosts => pageNum === 1 ? data : [...prevPosts, ...data]);
+    } catch (error: any) {
+      console.error('Failed to fetch posts:', error);
+      setError(error.message || '加载失败，请稍后重试');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPosts(page);
+  }, [page, fetchPosts]);
+
+  const handleCreatePost = useCallback(() => {
+    fetchPosts(1);
+  }, [fetchPosts]);
+
+  const handleLoadMore = useCallback(() => {
+    if (!isLoading) {
+      setPage(prevPage => prevPage + 1);
+    }
+  }, [isLoading]);
+
+  const renderContent = () => {
+    if (isLoading && posts.length === 0) {
+      return (
+        <div className="space-y-4">
+          <div className="animate-pulse">
+            <div className="h-32 bg-gray-200 rounded-lg"></div>
+          </div>
+        </div>
+      );
+    }
+
+    if (error && posts.length === 0) {
+      return (
+        <div className="bg-red-50 p-4 rounded-lg">
+          <p className="text-red-700">{error}</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {posts.map((post) => (
+          <div key={post.post_id} className="bg-white p-4 rounded-lg shadow">
+            <p className="text-gray-800">{post.content}</p>
+            {post.media_files && post.media_files.length > 0 && (
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {post.media_files.map((url, index) => (
+                  <img
+                    key={`${post.post_id}-${index}`}
+                    src={url}
+                    alt={`Media ${index + 1}`}
+                    className="rounded-lg w-full h-48 object-cover"
+                    loading="lazy"
+                  />
+                ))}
+              </div>
+            )}
+            <div className="mt-4 flex items-center space-x-4 text-gray-600">
+              <button className="flex items-center space-x-1 hover:text-blue-600 transition-colors">
+                <span>👍</span>
+                <span>{post.like_count}</span>
+              </button>
+              <button className="flex items-center space-x-1 hover:text-blue-600 transition-colors">
+                <span>💬</span>
+                <span>{post.comment_count}</span>
+              </button>
+            </div>
+          </div>
+        ))}
+        {!isLoading && !error && (
+          <button
+            onClick={handleLoadMore}
+            className="w-full p-4 text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            加载更多
+          </button>
+        )}
+        {isLoading && posts.length > 0 && (
+          <div className="text-center p-4">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent"></div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <ErrorBoundary fallback={<div className="text-red-600 p-4">页面出现错误，请刷新重试</div>}>
+      <main className="min-h-screen p-4">
+        <div className="max-w-4xl mx-auto">
+          <h1 className="text-3xl font-bold mb-6">动态列表</h1>
+          <CreatePost onSuccess={handleCreatePost} />
+          <div className="mt-6">
+            {renderContent()}
+          </div>
         </div>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+    </ErrorBoundary>
   );
 }
+
