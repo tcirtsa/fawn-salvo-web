@@ -3,9 +3,15 @@
 import { useState, useEffect } from 'react';
 import { Comment } from '@/types/post';
 import { postService } from '@/services/post';
+import { wsService } from '@/services/ws';
 
 interface CommentsProps {
     postId: string;
+}
+
+interface WebSocketMessage {
+    type: string;
+    post_id: string;
 }
 
 export default function Comments({ postId }: CommentsProps) {
@@ -15,6 +21,7 @@ export default function Comments({ postId }: CommentsProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
 
     useEffect(() => {
         setIsLoading(true);
@@ -49,7 +56,7 @@ export default function Comments({ postId }: CommentsProps) {
                 content: newComment
             });
             setNewComment('');
-            loadComments(1); // 重新加载评论
+            loadComments(1);
         } catch (error) {
             console.error('Failed to create comment:', error);
         } finally {
@@ -57,11 +64,30 @@ export default function Comments({ postId }: CommentsProps) {
         }
     };
 
-    const loadMore = () => {
-        if (!hasMore || isLoading) return;
-        const nextPage = page + 1;
-        setPage(nextPage);
-        loadComments(nextPage);
+    useEffect(() => {
+        const wsUnsubscribe = wsService.subscribe((message: WebSocketMessage) => {
+            if (message.type === 'comment_update' && message.post_id === postId) {
+                loadComments(1);
+            }
+        });
+
+        return () => wsUnsubscribe();
+    }, [postId]);
+
+    const loadMore = async () => {
+        if (!hasMore || isLoading || isLoadingMore) return;
+        setIsLoadingMore(true);
+        try {
+            const nextPage = page + 1;
+            const data = await postService.getComments(postId, nextPage);
+            setComments(prev => [...prev, ...data]);
+            setPage(nextPage);
+            setHasMore(data.length === 10);
+        } catch (error) {
+            console.error('Failed to load more comments:', error);
+        } finally {
+            setIsLoadingMore(false);
+        }
     };
 
     if (isLoading && page === 1) {
@@ -89,20 +115,26 @@ export default function Comments({ postId }: CommentsProps) {
 
             <div className="space-y-4">
                 {comments.map((comment) => (
-                    <div key={comment.id} className="p-4 bg-gray-50 rounded-lg">
+                    <div key={comment.id} className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200">
                         <p className="text-gray-800">{comment.content}</p>
-                        <p className="text-sm text-gray-500 mt-2">
-                            {new Date(comment.created_at).toLocaleString()}
-                        </p>
+                        <div className="flex items-center justify-between mt-2">
+                            <p className="text-sm text-gray-500">
+                                {new Date(comment.created_at).toLocaleString()}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                                {comment.user_name}
+                            </p>
+                        </div>
                     </div>
                 ))}
 
                 {hasMore && (
                     <button
                         onClick={loadMore}
-                        className="w-full p-2 text-sm text-gray-600 hover:text-gray-800 focus:outline-none"
+                        disabled={isLoadingMore}
+                        className="w-full py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors duration-200"
                     >
-                        加载更多评论
+                        {isLoadingMore ? '加载中...' : '加载更多'}
                     </button>
                 )}
             </div>

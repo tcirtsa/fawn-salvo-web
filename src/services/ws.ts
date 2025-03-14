@@ -1,6 +1,7 @@
 import { api } from '@/utils/api';
 
 type MessageHandler = (message: any) => void;
+type UnsubscribeFunction = () => void;
 
 export class WebSocketService {
     private ws: WebSocket | null = null;
@@ -75,7 +76,7 @@ export class WebSocketService {
         }, this.reconnectTimeout * this.reconnectAttempts);
     }
 
-    public subscribe(handler: MessageHandler) {
+    public subscribe(handler: MessageHandler): UnsubscribeFunction {
         this.messageHandlers.add(handler);
         return () => this.messageHandlers.delete(handler);
     }
