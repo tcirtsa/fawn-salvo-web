@@ -5,12 +5,16 @@ import { Post } from '@/types/post';
 import { postService } from '@/services/post';
 import CreatePost from '@/components/CreatePost';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import Comments from '@/components/Comments';
+import { wsService } from '@/services/ws';
 
 export default function Home() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
 
   const fetchPosts = useCallback(async (pageNum = 1) => {
     setIsLoading(true);
@@ -28,6 +32,17 @@ export default function Home() {
 
   useEffect(() => {
     fetchPosts(page);
+
+    const unsubscribe = wsService.subscribe((message) => {
+      if (message.type === 'post_update') {
+        fetchPosts(1);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      wsService.close();
+    };
   }, [page, fetchPosts]);
 
   const handleCreatePost = useCallback(() => {
@@ -39,6 +54,35 @@ export default function Home() {
       setPage(prevPage => prevPage + 1);
     }
   }, [isLoading]);
+
+  const handleToggleComments = useCallback((postId: string) => {
+    setSelectedPostId(currentId => currentId === postId ? null : postId);
+  }, []);
+
+  const handleLike = useCallback(async (postId: string) => {
+    try {
+      const userId = '1'; // 临时使用固定用户ID，实际应该从用户认证中获取
+      await postService.likePost(postId, userId);
+      setLikedPosts(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(postId)) {
+          newSet.delete(postId);
+        } else {
+          newSet.add(postId);
+        }
+        return newSet;
+      });
+      setPosts(prev =>
+        prev.map(post =>
+          post.post_id === postId
+            ? { ...post, like_count: likedPosts.has(postId) ? post.like_count - 1 : post.like_count + 1 }
+            : post
+        )
+      );
+    } catch (error) {
+      console.error('Failed to like post:', error);
+    }
+  }, [likedPosts]);
 
   const renderContent = () => {
     if (isLoading && posts.length === 0) {
@@ -78,15 +122,26 @@ export default function Home() {
               </div>
             )}
             <div className="mt-4 flex items-center space-x-4 text-gray-600">
-              <button className="flex items-center space-x-1 hover:text-blue-600 transition-colors">
+              <button
+                onClick={() => handleLike(post.post_id)}
+                className={`flex items-center space-x-1 transition-colors ${likedPosts.has(post.post_id) ? 'text-blue-600' : 'hover:text-blue-600'}`}
+              >
                 <span>👍</span>
                 <span>{post.like_count}</span>
               </button>
-              <button className="flex items-center space-x-1 hover:text-blue-600 transition-colors">
+              <button
+                onClick={() => handleToggleComments(post.post_id)}
+                className="flex items-center space-x-1 hover:text-blue-600 transition-colors"
+              >
                 <span>💬</span>
                 <span>{post.comment_count}</span>
               </button>
             </div>
+            {selectedPostId === post.post_id && (
+              <div className="mt-4 border-t pt-4">
+                <Comments postId={post.post_id} />
+              </div>
+            )}
           </div>
         ))}
         {!isLoading && !error && (

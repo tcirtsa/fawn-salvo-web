@@ -6,6 +6,7 @@ import { authService } from '@/services/auth';
 
 interface UserProfileProps {
     userId: string;
+    isEditable?: boolean;
 }
 
 export default function UserProfile({ userId }: UserProfileProps) {

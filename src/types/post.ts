@@ -21,8 +21,3 @@ export interface CreatePostData {
     content: string;
     mediaFiles: File[];
 }
-
-export interface CreateCommentData {
-    postId: string;
-    content: string;
-}
